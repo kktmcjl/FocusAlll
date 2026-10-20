@@ -1,0 +1,35 @@
+
+name: Build FocusAll VST3
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout FocusAll
+        uses: actions/checkout@v4
+
+      - name: Checkout JUCE
+        uses: actions/checkout@v4
+        with:
+          repository: juce-framework/JUCE
+          path: JUCE
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DJUCE_DIR="${{ github.workspace }}/JUCE" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Upload VST3 artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FocusAll-VST3-Windows
+          path: build/TrapVoxAI_artefacts/Release/VST3/
+          if-no-files-found: error
