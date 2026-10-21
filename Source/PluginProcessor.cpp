@@ -55,13 +55,18 @@ void TrapVoxAIProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     highPass.prepare(spec);
     highPass.reset();
 
-    *highPass.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(
-        sampleRate,
-        *parameters.getRawParameterValue("highpass"));
+    const float hpFrequency =
+        parameters.getRawParameterValue("highpass")->load();
+
+    *highPass.state =
+        *juce::dsp::IIR::Coefficients<float>::makeHighPass(
+            sampleRate, hpFrequency);
 
     reverb.reset();
 
-    const int maxDelay = static_cast<int>(sampleRate * 0.8) + samplesPerBlock + 1;
+    const int maxDelay =
+        static_cast<int>(sampleRate * 0.8) + samplesPerBlock + 1;
+
     delayBuffer.setSize(2, maxDelay);
     delayBuffer.clear();
 
@@ -74,7 +79,9 @@ void TrapVoxAIProcessor::releaseResources()
     delayBuffer.setSize(0, 0);
 }
 
-void TrapVoxAIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void TrapVoxAIProcessor::processBlock(
+    juce::AudioBuffer<float>& buffer,
+    juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -85,16 +92,16 @@ void TrapVoxAIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
         return;
 
     const auto inputGain = juce::Decibels::decibelsToGain(
-        *parameters.getRawParameterValue("inputGain"));
+        parameters.getRawParameterValue("inputGain")->load());
 
-    const float hp = *parameters.getRawParameterValue("highpass");
-    const float presence = *parameters.getRawParameterValue("presence");
-    const float comp = *parameters.getRawParameterValue("comp");
-    const float deess = *parameters.getRawParameterValue("deess");
-    const float drive = *parameters.getRawParameterValue("drive");
-    const float wetReverb = *parameters.getRawParameterValue("reverb");
-    const float wetDelay = *parameters.getRawParameterValue("delay");
-    const float delayMs = *parameters.getRawParameterValue("delayMs");
+    const float hp = parameters.getRawParameterValue("highpass")->load();
+    const float presence = parameters.getRawParameterValue("presence")->load();
+    const float comp = parameters.getRawParameterValue("comp")->load();
+    const float deess = parameters.getRawParameterValue("deess")->load();
+    const float drive = parameters.getRawParameterValue("drive")->load();
+    const float wetReverb = parameters.getRawParameterValue("reverb")->load();
+    const float wetDelay = parameters.getRawParameterValue("delay")->load();
+    const float delayMs = parameters.getRawParameterValue("delayMs")->load();
 
     const int style = static_cast<int>(
         parameters.getRawParameterValue("preset")->load());
@@ -103,15 +110,13 @@ void TrapVoxAIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
     const float styleComp = juce::jlimit(
         0.0f, 1.0f, comp + (style == 2 ? 0.18f : 0.0f));
 
-    *highPass.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(
-        currentSampleRate, hp);
+    *highPass.state =
+        *juce::dsp::IIR::Coefficients<float>::makeHighPass(
+            currentSampleRate, hp);
 
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
     highPass.process(context);
-
-    auto* left = buffer.getWritePointer(0);
-    auto* right = channels > 1 ? buffer.getWritePointer(1) : left;
 
     const float attack = std::exp(
         -1.0f / static_cast<float>(currentSampleRate * 0.008));
@@ -122,8 +127,7 @@ void TrapVoxAIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
     const int delaySize = delayBuffer.getNumSamples();
 
     const int delaySamples = juce::jlimit(
-        1,
-        delaySize - 1,
+        1, delaySize - 1,
         static_cast<int>(currentSampleRate * delayMs / 1000.0f));
 
     for (int i = 0; i < numSamples; ++i)
@@ -151,14 +155,15 @@ void TrapVoxAIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
         {
             float x = buffer.getSample(ch, i) * inputGain;
 
-            x *= 1.0f + juce::jlimit(-0.15f, 0.15f, presence * 0.012f);
+            x *= 1.0f + juce::jlimit(
+                -0.15f, 0.15f, presence * 0.012f);
+
             x *= compGain * deessGain;
 
             const int readPosition =
                 (delayWritePosition - delaySamples + delaySize) % delaySize;
 
             const float delayed = delayBuffer.getSample(ch, readPosition);
-
             const float shaped = std::tanh(x * (1.0f + styleDrive * 5.0f));
 
             x = x * (1.0f - styleDrive * 0.22f)
@@ -182,13 +187,10 @@ void TrapVoxAIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
 
     reverb.setParameters(reverbParams);
 
-    // JUCE-compatible reverb processing.
-    // Process only the actual output channels.
     juce::dsp::AudioBlock<float> reverbBlock(buffer);
     juce::dsp::ProcessContextReplacing<float> reverbContext(reverbBlock);
     reverb.process(reverbContext);
 
-    // Conservative output safety limiter.
     for (int ch = 0; ch < channels; ++ch)
     {
         for (int i = 0; i < numSamples; ++i)
@@ -212,9 +214,11 @@ void TrapVoxAIProcessor::getStateInformation(juce::MemoryBlock& destData)
     copyXmlToBinary(*xml, destData);
 }
 
-void TrapVoxAIProcessor::setStateInformation(const void* data, int sizeInBytes)
+void TrapVoxAIProcessor::setStateInformation(
+    const void* data, int sizeInBytes)
 {
-    std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
+    std::unique_ptr<juce::XmlElement> xml(
+        getXmlFromBinary(data, sizeInBytes));
 
     if (xml && xml->hasTagName(parameters.state.getType()))
         parameters.replaceState(juce::ValueTree::fromXml(*xml));
